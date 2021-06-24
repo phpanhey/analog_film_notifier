@@ -30,7 +30,7 @@ def make_request(bagid, outletid):
 
 def extractJobStatus(html):
     soup = BeautifulSoup(html, "html.parser")
-    return soup.find_all("td", class_="boxHalf")[1].text
+    return soup.find_all("td", class_="boxHalf")[-1].text
 
 
 def getOldJobStatus():
