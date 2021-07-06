@@ -4,26 +4,26 @@ from bs4 import BeautifulSoup
 import json
 
 
-def get_params():
+def get_credentials(credential_name):
+    return json.loads(open(get_config_name(), "r").read())[credential_name]
+
+
+def get_config_name():
     parser = argparse.ArgumentParser()
-
-    parser.add_argument("bagid", type=int)
-    parser.add_argument("outletid", type=int)
-    parser.add_argument("telegram_bot_token")
-    parser.add_argument("telegram_user_id")
-    args = parser.parse_args()
-    return (
-        args.bagid,
-        args.outletid,
-        args.telegram_bot_token,
-        args.telegram_user_id,
-    )
+    parser.add_argument("config_name", nargs="?")
+    config_name = parser.parse_args().config_name
+    if not config_name:
+        config_name = "config.json"
+    return config_name
 
 
-def make_request(bagid, outletid):
+def get_html():
     url = "https://tracking.orwonet.de/tracking/orderdetails.jsp"
     headers = {"User-Agent": "Mozilla/5.0"}
-    payload = {"bagId": bagid, "outletId": outletid}
+    payload = {
+        "bagId": get_credentials("bagid"),
+        "outletId": get_credentials("outletid"),
+    }
     session = requests.Session()
     return session.post(url, headers=headers, data=payload).text
 
@@ -35,7 +35,9 @@ def extractJobStatus(html):
 
 def getOldJobStatus():
     try:
-        return json.load(open("current_job_state.json"))["job_state"]
+        return json.load(
+            open("current_job_state_" + get_credentials("bagid") + ".json")
+        )["job_state"]
     except FileNotFoundError:
         create_initial_job_state_json_file()
         return getOldJobStatus()
@@ -46,17 +48,20 @@ def create_initial_job_state_json_file():
 
 
 def write_state_to_job_state_json_file(state):
+
     json.dump(
-        {"job_state": state}, open("current_job_state.json", "w"), ensure_ascii=False
+        {"job_state": state},
+        open("current_job_state_" + get_credentials("bagid") + ".json", "w"),
+        ensure_ascii=False,
     )
 
 
-def send_telegram(message, telegram_bot_token, telegram_user_id):
+def send_telegram(message):
     request_string = (
         "https://api.telegram.org/bot"
-        + telegram_bot_token
+        + get_credentials("telegram_bot_token")
         + "/sendMessage?chat_id="
-        + telegram_user_id
+        + get_credentials("telegram_user_id")
         + "&parse_mode=Markdown&text="
         + message
     )
@@ -64,14 +69,11 @@ def send_telegram(message, telegram_bot_token, telegram_user_id):
     return response.json()
 
 
-bagid, outletid, telegram_bot_token, telegram_user_id = get_params()
-html = make_request(bagid, outletid)
+html = get_html()
 old_job_status = getOldJobStatus()
 new_job_status = extractJobStatus(html)
+
+
 if old_job_status != new_job_status:
-    send_telegram(
-        f"🤖 Statechange (bagid:{bagid}) :{new_job_status}",
-        telegram_bot_token,
-        telegram_user_id,
-    )
+    send_telegram("🤖 Änderung '" + get_credentials("title") + "': " + new_job_status)
     write_state_to_job_state_json_file(new_job_status)
